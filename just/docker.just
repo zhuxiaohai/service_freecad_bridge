@@ -14,6 +14,8 @@ image_name := "freecad-robust-mcp"
 bridge_image_name := "freecad-bridge"
 registry := "spkane"
 gui_test_image := "freecad-gui-test"
+# On docker/freecad-bridge branch, root Dockerfile is the bridge; MCP uses Dockerfile.mcp-server.
+mcp_dockerfile := project_root + "/Dockerfile.mcp-server"
 
 # Compose stack: ALL image tags and deploy settings live in deploy/.env only.
 #   FREECAD_BRIDGE_IMAGE, FREECAD_MCP_IMAGE, FREECAD_TAG, FREECAD_MCP_PORT
@@ -26,11 +28,11 @@ project_root := justfile_directory()
 # Build Docker image for local architecture only (Route 3: MCP container → host FreeCAD).
 # Not used by deploy compose; compose uses docker::compose-build-* instead.
 build:
-    docker build -t {{image_name}} {{project_root}}
+    docker build -f {{mcp_dockerfile}} -t {{image_name}} {{project_root}}
 
 # Build Docker image with specific tag
 build-tag tag:
-    docker build --load -t {{image_name}}:{{tag}} {{project_root}}
+    docker build -f {{mcp_dockerfile}} --load -t {{image_name}}:{{tag}} {{project_root}}
 
 # Validate multi-architecture build (amd64 and arm64)
 # This is a dry-run that verifies both architectures compile successfully.
@@ -40,11 +42,11 @@ build-tag tag:
 #   - Local verification that changes build on both architectures
 # To actually publish a multi-arch image, use: just docker::build-push
 build-multi: setup-buildx
-    docker buildx build --platform linux/amd64,linux/arm64 -t {{image_name}} {{project_root}}
+    docker buildx build -f {{mcp_dockerfile}} --platform linux/amd64,linux/arm64 -t {{image_name}} {{project_root}}
 
 # Build and push multi-architecture image to registry (produces usable multi-arch image)
 build-push tag="latest": setup-buildx
-    docker buildx build --platform linux/amd64,linux/arm64 \
+    docker buildx build -f {{mcp_dockerfile}} --platform linux/amd64,linux/arm64 \
         -t {{registry}}/{{image_name}}:{{tag}} \
         --push {{project_root}}
 
@@ -171,6 +173,7 @@ build-load: setup-buildx
     esac
     echo "Building for detected architecture: $PLATFORM"
     docker buildx build --platform "$PLATFORM" \
+        -f {{mcp_dockerfile}} \
         -t {{image_name}} \
         --load {{project_root}}
 
@@ -357,7 +360,7 @@ test:
 
     # Build the Docker image
     echo "Step 1: Building Docker image..."
-    docker build -t {{image_name}}:test {{project_root}}
+    docker build -f {{mcp_dockerfile}} -t {{image_name}}:test {{project_root}}
     echo "✓ Docker image built successfully"
     echo ""
 

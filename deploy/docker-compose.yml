@@ -22,7 +22,7 @@ services:
     image: ${FREECAD_BRIDGE_IMAGE:?Set FREECAD_BRIDGE_IMAGE in deploy/.env}
     build:
       context: ..
-      dockerfile: Dockerfile.freecad-bridge
+      dockerfile: Dockerfile
       args:
         FREECAD_TAG: ${FREECAD_TAG:-1.1.1}
     volumes:
@@ -54,7 +54,7 @@ services:
     image: ${FREECAD_MCP_IMAGE:?Set FREECAD_MCP_IMAGE in deploy/.env}
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.mcp-server
     environment:
       FREECAD_MODE: xmlrpc
       # Connect to the freecad service via compose internal network

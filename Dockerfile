@@ -1,126 +1,90 @@
 # syntax=docker/dockerfile:1.7
 
-# FreeCAD Robust MCP Server Dockerfile
-# Multi-stage build with BuildKit optimizations for multi-arch support
+# FreeCAD Robust MCP Bridge Dockerfile
+# Runs FreeCAD headless with the Robust MCP Bridge, exposing XML-RPC on :9875
 #
-# Uses Alpine Linux for minimal image size and reduced CVE surface.
-# Alpine has significantly fewer vulnerabilities than Debian-based images.
+# This branch uses the default Dockerfile name for Kubernetes / corporate CI
+# pipelines that only build from ./Dockerfile at the repository root.
 #
-# Build:
-#   docker build -t freecad-mcp .
+# Local compose stack (build + run):
+#   cp deploy/.env.example deploy/.env
+#   just docker::compose-build-bridge
+#   just docker::compose-up
 #
-# Build multi-arch:
-#   docker buildx build --platform linux/amd64,linux/arm64 -t freecad-mcp .
-#
-# Run (stdio mode, for Cursor/Claude Code):
-#   docker run --rm -i freecad-mcp
-#
-# Run (HTTP mode, for cloud/compose deployment):
-#   docker run -d -p 8000:8000 -e FREECAD_TRANSPORT=http freecad-mcp
+# Direct build:
+#   docker build -t freecad-bridge .
 
-# =============================================================================
-# Stage 1: Builder - Install dependencies and build the package
-# =============================================================================
-FROM python:3.11-alpine AS builder
+FROM ubuntu:24.04
 
-# Install build dependencies for compiling Python packages with native extensions
-# hadolint ignore=DL3018
-RUN apk add --no-cache \
-    build-base \
-    libffi-dev
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Set up working directory
-WORKDIR /app
+# FreeCAD version to install (must match Python 3.11 requirement; see CLAUDE.md)
+ARG FREECAD_TAG=1.1.1
+ENV FREECAD_TAG=${FREECAD_TAG}
 
-# Upgrade pip to fix CVE-2025-8869, then install uv for fast dependency management
-# hadolint ignore=DL3013
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --upgrade "pip>=25.3" && \
-    pip install --no-cache-dir --no-compile uv
+# AppImage installation directory (setup-freecad.sh respects this variable)
+ENV APPIMAGE_DIR=/opt/freecad-appimage
 
-# Copy only dependency files first for better layer caching
-# Include uv.lock for reproducible builds with locked dependency versions
-COPY pyproject.toml uv.lock README.md ./
-COPY src/ ./src/
+# Install minimal runtime dependencies:
+#   ca-certificates, curl  - AppImage download and verification
+#   libgl1                 - OpenGL (required by FreeCAD even in headless mode)
+#   libglib2.0-0           - GLib (required by Qt/FreeCAD)
+#   fontconfig             - Font configuration subsystem (referenced by FreeCAD)
+#   fonts-dejavu-core      - Basic fonts required by FreeCAD document rendering
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    fontconfig \
+    fonts-dejavu-core \
+    libglib2.0-0 \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f
 
-# Version for setuptools-scm when building without git (e.g., in Docker)
-# This can be overridden at build time with --build-arg VERSION=x.y.z
-ARG VERSION=0.0.0.dev0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}
+# Copy FreeCAD AppImage setup script (reused from CI infrastructure).
+# The script downloads the AppImage, extracts it to avoid FUSE dependency,
+# and installs freecadcmd/freecad wrapper scripts to /usr/local/bin/.
+COPY tests/ci-test/setup-freecad.sh /usr/local/bin/setup-freecad.sh
+RUN chmod +x /usr/local/bin/setup-freecad.sh
 
-# Create virtual environment and install dependencies using locked versions
-# Using uv cache mount for faster rebuilds
-# --frozen ensures uv.lock is used exactly without updates
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv /opt/venv && \
-    UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-dev --no-editable
+# Download, extract, and install FreeCAD AppImage.
+# Runs as root inside Docker so the script installs wrappers without sudo.
+# CI environment variables are NOT propagated into docker build, so APPIMAGE_SHA256
+# is not required here (the script's CI check only triggers when CI=true is set).
+# hadolint ignore=DL3001,DL3059
+RUN /usr/local/bin/setup-freecad.sh
 
-# =============================================================================
-# Stage 2: Runtime - Minimal image for running the server
-# =============================================================================
-FROM python:3.11-alpine AS runtime
+# Copy the Robust MCP Bridge addon.
+# blocking_bridge.py adds its own directory to sys.path, so no package install needed.
+COPY freecad/RobustMCPBridge/ /opt/RobustMCPBridge/
 
-# Labels for container metadata (OCI Image Spec)
-# Note: version, revision, and created are set dynamically in CI/CD workflows
-LABEL org.opencontainers.image.title="FreeCAD Robust MCP Server" \
-      org.opencontainers.image.description="Robust MCP Server for FreeCAD integration with AI assistants" \
-      org.opencontainers.image.url="https://github.com/spkane/freecad-robust-mcp-and-more" \
-      org.opencontainers.image.source="https://github.com/spkane/freecad-robust-mcp-and-more" \
-      org.opencontainers.image.documentation="https://github.com/spkane/freecad-robust-mcp-and-more#readme" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.vendor="Sean P. Kane" \
-      org.opencontainers.image.authors="Sean P. Kane <spkane@gmail.com>" \
-      org.opencontainers.image.base.name="python:3.11-alpine"
+# Run as non-root user (required by container security policy / Trivy DS-0002)
+RUN groupadd -g 1000 freecaduser && \
+    useradd -u 1000 -g freecaduser -m -s /bin/bash freecaduser && \
+    chown -R freecaduser:freecaduser /opt/RobustMCPBridge /opt/freecad-appimage
 
-# Upgrade all Alpine packages to fix CVEs in base image (zlib, busybox, etc.)
-# This ensures we get security patches even if the base image is slightly stale
-# hadolint ignore=DL3018
-RUN apk upgrade --no-cache
+# Default bridge configuration (can be overridden at runtime via environment variables)
+# FREECAD_BRIDGE_BIND_HOST=0.0.0.0 allows connections from other containers on the Docker
+# bridge network. In local (non-Docker) use this defaults to localhost in blocking_bridge.py.
+ENV FREECAD_XMLRPC_PORT=9875 \
+    FREECAD_SOCKET_PORT=9876 \
+    FREECAD_BRIDGE_BIND_HOST=0.0.0.0
 
-# Create non-root user for security (Alpine uses addgroup/adduser)
-RUN addgroup -g 1000 mcpuser && \
-    adduser -u 1000 -G mcpuser -s /bin/sh -D mcpuser
+# Expose XML-RPC port for MCP Server to connect
+EXPOSE 9875
 
-# Remove pip, setuptools, and wheel from system Python to fix CVEs
-# - The base image has pip with CVE-2025-8869
-# - setuptools vendors jaraco.context 5.3.0 with GHSA-58pv-8j8x-9vj2
-# Since we use a pre-built venv, we don't need these in system Python at runtime.
-# This eliminates the vulnerabilities without affecting functionality.
-# hadolint ignore=DL3013
-RUN pip uninstall -y pip setuptools wheel 2>/dev/null || true && \
-    rm -rf /usr/local/lib/python3.11/site-packages/pip* \
-           /usr/local/lib/python3.11/site-packages/setuptools* \
-           /usr/local/lib/python3.11/site-packages/wheel* \
-           /usr/local/lib/python3.11/site-packages/pkg_resources*
+USER freecaduser
+WORKDIR /home/freecaduser
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
+# Health check - verify the XML-RPC bridge is accepting connections.
+# FreeCAD takes 30-60 seconds to initialise, so start_period is set accordingly.
+# Sends a system.listMethods XML-RPC call and expects a 200 response.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
+    CMD curl -sf -X POST -H "Content-Type: text/xml" -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' --max-time 5 "http://localhost:${FREECAD_XMLRPC_PORT:-9875}" > /dev/null || exit 1
 
-# Set environment variables
-ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    # Default to xmlrpc mode (requires FreeCAD running externally)
-    FREECAD_MODE="xmlrpc" \
-    FREECAD_SOCKET_HOST="host.docker.internal" \
-    FREECAD_SOCKET_PORT="9876" \
-    FREECAD_XMLRPC_PORT="9875" \
-    FREECAD_TIMEOUT_MS="30000"
-
-# Declare HTTP port for MCP HTTP transport mode
-# Enable with: docker run -e FREECAD_TRANSPORT=http -p 8000:8000 freecad-mcp
-EXPOSE 8000
-
-# Switch to non-root user
-USER mcpuser
-WORKDIR /home/mcpuser
-
-# Health check - verify the server is running:
-# - HTTP mode (FREECAD_TRANSPORT=http): verifies port is accepting TCP connections
-# - stdio mode (default): verifies Python package imports successfully
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import os,socket; t=os.environ.get('FREECAD_TRANSPORT','stdio'); p=int(os.environ.get('FREECAD_HTTP_PORT','8000')); socket.create_connection(('localhost',p),timeout=5).close() if t=='http' else (__import__('freecad_mcp'),print('ok'))" || exit 1
-
-# Default command - run the MCP server in stdio mode
-# For HTTP mode: docker run -e FREECAD_TRANSPORT=http -p 8000:8000 freecad-mcp
-ENTRYPOINT ["freecad-mcp"]
+# Run FreeCAD headless with the blocking bridge.
+# blocking_bridge.py blocks indefinitely (run_forever), maintaining the XML-RPC server.
+# Note: GUI features (screenshots, visibility, colours) are not available in headless mode.
+CMD ["freecadcmd", "/opt/RobustMCPBridge/freecad_mcp_bridge/blocking_bridge.py"]

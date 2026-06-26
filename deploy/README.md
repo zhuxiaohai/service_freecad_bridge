@@ -279,7 +279,7 @@ mount the `assembly-data` volume at `/app/sessions`.
 ### MCP cannot connect to FreeCAD
 
 - Ensure `FREECAD_BRIDGE_BIND_HOST=0.0.0.0` in the bridge image (set in
-  `Dockerfile.freecad-bridge`).
+  root `Dockerfile` on the `docker/freecad-bridge` branch).
 - In compose, MCP must use `FREECAD_SOCKET_HOST: freecad` (service name), not
   `localhost`.
 
