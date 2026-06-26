@@ -14,7 +14,7 @@
 # Direct build:
 #   docker build -t freecad-bridge .
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
