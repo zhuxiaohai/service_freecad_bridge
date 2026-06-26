@@ -60,11 +60,6 @@ RUN /usr/local/bin/setup-freecad.sh
 # blocking_bridge.py adds its own directory to sys.path, so no package install needed.
 COPY freecad/RobustMCPBridge/ /opt/RobustMCPBridge/
 
-# Run as non-root user (required by container security policy / Trivy DS-0002)
-RUN groupadd -g 1000 freecaduser && \
-    useradd -u 1000 -g freecaduser -m -s /bin/bash freecaduser && \
-    chown -R freecaduser:freecaduser /opt/RobustMCPBridge /opt/freecad-appimage
-
 # Default bridge configuration (can be overridden at runtime via environment variables)
 # FREECAD_BRIDGE_BIND_HOST=0.0.0.0 allows connections from other containers on the Docker
 # bridge network. In local (non-Docker) use this defaults to localhost in blocking_bridge.py.
@@ -74,9 +69,6 @@ ENV FREECAD_XMLRPC_PORT=9875 \
 
 # Expose XML-RPC port for MCP Server to connect
 EXPOSE 9875
-
-USER freecaduser
-WORKDIR /home/freecaduser
 
 # Health check - verify the XML-RPC bridge is accepting connections.
 # FreeCAD takes 30-60 seconds to initialise, so start_period is set accordingly.

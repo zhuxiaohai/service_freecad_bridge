@@ -250,6 +250,8 @@ repos:
           - HIGH,CRITICAL
           - --exit-code
           - "1"
+          - --ignorefile
+          - .trivyignore
         language: system
         files: (Dockerfile|\.dockerfile)$
         pass_filenames: true

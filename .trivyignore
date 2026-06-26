@@ -18,6 +18,16 @@
 #   just docker::scan
 #
 # =============================================================================
+# IGNORED MISCONFIGURATIONS
+# =============================================================================
+
+# AVD-DS-0002 - Dockerfile must specify non-root USER
+# freecad-bridge runs as root so it can read/write the assembly-data shared
+# volume with assembly-opencode (also root in deploy/Dockerfile.assembly).
+# See assembly_agent deploy/docker-compose.yml volume mount.
+AVD-DS-0002
+
+# =============================================================================
 # IGNORED VULNERABILITIES
 # =============================================================================
 
