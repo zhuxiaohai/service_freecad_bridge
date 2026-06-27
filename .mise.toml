@@ -21,6 +21,7 @@ actionlint = "1.7"      # GitHub Actions linter
 
 # Markdown tools
 markdownlint-cli2 = "0.20"  # markdown linter
+glab = "latest"
 
 [env]
 # FreeCAD connection mode:
