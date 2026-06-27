@@ -17,10 +17,6 @@ from tests.just_commands.conftest import assert_command_executed
 if TYPE_CHECKING:
     from tests.just_commands.conftest import JustRunner
 
-# Docker image name used in tests - defined once for maintainability
-DOCKER_IMAGE_NAME = "freecad-robust-mcp"
-
-# Mapping of commands to their required arguments for dry-run testing
 COMMAND_ARG_MAP: dict[str, tuple[str, ...]] = {
     "docker::build-tag": ("test",),
     "docker::build-push": ("test",),
@@ -28,16 +24,14 @@ COMMAND_ARG_MAP: dict[str, tuple[str, ...]] = {
     "docker::publish-show": (),
     "docker::compose-build": (),
     "docker::compose-build-bridge": (),
-    "docker::compose-build-mcp": (),
     "docker::compose-up": (),
+    "docker::compose-down": (),
     "docker::clean-legacy-tags": (),
-    "docker::publish-push-mcp": (),
+    "docker::publish-push": (),
     "docker::publish-push-bridge": (),
     "docker::publish-dev": (),
-    "docker::publish-dev-mcp": (),
     "docker::publish-dev-bridge": (),
     "docker::scan-sarif": ("test.sarif",),
-    "docker::run-env": ("-e", "TEST=1"),
     "docker::gui-test-cmd": ("echo", "test"),
 }
 
@@ -71,19 +65,14 @@ class TestDockerSyntax:
         "docker::publish-show",
         "docker::compose-build",
         "docker::compose-build-bridge",
-        "docker::compose-build-mcp",
         "docker::compose-up",
+        "docker::compose-down",
         "docker::clean-legacy-tags",
-        "docker::publish-push-mcp",
+        "docker::publish-push",
         "docker::publish-push-bridge",
         "docker::publish-dev",
-        "docker::publish-dev-mcp",
         "docker::publish-dev-bridge",
         "docker::publish",
-        "docker::run",
-        "docker::run-env",
-        "docker::run-http",
-        "docker::shell",
         "docker::inspect",
         "docker::clean",
         "docker::clean-all",
@@ -103,7 +92,6 @@ class TestDockerSyntax:
     @pytest.mark.parametrize("command", DOCKER_COMMANDS)
     def test_docker_command_syntax(self, just: JustRunner, command: str) -> None:
         """Docker command should have valid syntax."""
-        # Get args from mapping, or empty tuple for commands without required args
         args = COMMAND_ARG_MAP.get(command, ())
         result = just.dry_run(command, *args)
         assert result.success, f"Syntax error in '{command}': {result.stderr}"
@@ -125,24 +113,22 @@ class TestDockerRuntime:
         self, just: JustRunner, docker_image_cleanup: list[str]
     ) -> None:
         """Docker build should run successfully."""
-        docker_image_cleanup.append(DOCKER_IMAGE_NAME)
-        # 10 minute timeout: Docker builds can be slow, especially on first run
-        # when base images need to be pulled and dependencies compiled
-        result = just.run("docker::build", timeout=600)
+        env_result = just.run("docker::publish-show", timeout=30)
+        assert env_result.success, env_result.stderr
+        # Image name comes from deploy/.env; cleanup handled by fixture if tagged
+        result = just.run("docker::build", timeout=900)
         assert result.success, f"Docker build failed: {result.stderr}"
 
     @pytest.mark.just_runtime
     def test_inspect_runs(self, just: JustRunner) -> None:
         """Docker inspect should run (may fail if no image)."""
         result = just.run("docker::inspect", timeout=30)
-        # May fail if image doesn't exist, but should run without missing deps
         assert_command_executed(result, "docker::inspect")
 
     @pytest.mark.just_runtime
     def test_clean_runs(self, just: JustRunner) -> None:
         """Docker clean should run."""
         result = just.run("docker::clean", timeout=60)
-        # May fail if no images to clean, but should run without missing deps
         assert_command_executed(result, "docker::clean")
 
     @pytest.mark.just_runtime

@@ -3,18 +3,16 @@
 # FreeCAD Robust MCP Bridge Dockerfile
 # Runs FreeCAD headless with the Robust MCP Bridge, exposing XML-RPC on :9875
 #
-# This branch uses the default Dockerfile name for Kubernetes / corporate CI
-# pipelines that only build from ./Dockerfile at the repository root.
+# Corporate / K8s CI builds from this file at the repository root.
 #
-# Local compose stack (build + run):
+# Local workflow:
 #   cp deploy/.env.example deploy/.env
-#   just docker::compose-build-bridge
+#   just docker::compose-build
 #   just docker::compose-up
-#
-# Direct build:
-#   docker build -t freecad-bridge .
 
-FROM ubuntu:24.04
+# Prefix for base images (empty = Docker Hub). Corporate CI uses hub.designorder.cn/.
+ARG DOCKER_REGISTRY=hub.designorder.cn/
+FROM ${DOCKER_REGISTRY}ubuntu:24.04
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "freecad": {
-      "url": "http://localhost:8001/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
