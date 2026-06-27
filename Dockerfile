@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # FreeCAD Robust MCP Bridge Dockerfile
 # Runs FreeCAD headless with the Robust MCP Bridge, exposing XML-RPC on :9875
 #
@@ -12,7 +10,12 @@
 
 # Prefix for base images (empty = Docker Hub). Corporate CI uses hub.designorder.cn/.
 ARG DOCKER_REGISTRY=hub.designorder.cn/
+# Ubuntu apt mirror for corporate networks that block archive.ubuntu.com.
+# Override at build time: --build-arg APT_MIRROR= (empty = upstream defaults)
+ARG APT_MIRROR=https://mirrors.aliyun.com/ubuntu/
 FROM ${DOCKER_REGISTRY}ubuntu:24.04
+
+ARG APT_MIRROR
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,7 +34,17 @@ ENV APPIMAGE_DIR=/opt/freecad-appimage
 #   fontconfig             - Font configuration subsystem (referenced by FreeCAD)
 #   fonts-dejavu-core      - Basic fonts required by FreeCAD document rendering
 # hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      sed -i \
+        -e "s|http://archive.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
+        -e "s|http://security.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
+        /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+      sed -i \
+        -e "s|http://archive.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
+        -e "s|http://security.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
+        /etc/apt/sources.list; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     fontconfig \

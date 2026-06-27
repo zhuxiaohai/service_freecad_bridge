@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-#
 # Dockerfile for testing FreeCAD GUI with Xvfb
 # Replicates the GitHub Actions CI environment for local debugging
 #

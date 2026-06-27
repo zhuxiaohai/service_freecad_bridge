@@ -19,6 +19,7 @@ services:
       dockerfile: Dockerfile
       args:
         DOCKER_REGISTRY: ${DOCKER_REGISTRY:-hub.designorder.cn/}
+        APT_MIRROR: ${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}
         FREECAD_TAG: ${FREECAD_TAG:-1.1.1}
     volumes:
       - assembly-data:/app/sessions

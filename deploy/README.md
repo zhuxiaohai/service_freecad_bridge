@@ -54,6 +54,7 @@ just docker::publish-show
 | -------- | ------- | ----------- |
 | `FREECAD_BRIDGE_IMAGE` | `hub.designorder.cn/freecad-bridge:dev` | Image tag for build, run, and push |
 | `DOCKER_REGISTRY` | `hub.designorder.cn/` | Prefix for base images (`ubuntu:24.04`) |
+| `APT_MIRROR` | `https://mirrors.aliyun.com/ubuntu/` | Ubuntu apt mirror (Jenkins often blocks archive.ubuntu.com) |
 | `FREECAD_TAG` | `1.1.1` | FreeCAD AppImage version at build time |
 
 ## Corporate CI (Jenkins)
