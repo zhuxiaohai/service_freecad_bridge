@@ -26,11 +26,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG FREECAD_TAG=1.1.1
 ENV FREECAD_TAG=${FREECAD_TAG}
 
-# GitLab mirror: split AppImage parts (see deploy/scripts/mirror-freecad-appimage.sh).
-ARG APPIMAGE_PARTS_PREFIX=
+# Split AppImage mirror (public Gitee — Jenkins zero-config, no token required).
+# Override for GitLab/faster mirror: --build-arg APPIMAGE_PARTS_PREFIX=... (+ token).
+# See deploy/appimage-mirror.env and deploy/scripts/mirror-freecad-appimage.sh.
+ARG APPIMAGE_PARTS_PREFIX=https://gitee.com/xiaohaizhu/freecad-appimage-mirror/releases/download/freecad-appimage-1.1.1/part_
 ENV APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}
 
-ARG APPIMAGE_PART_COUNT=
+ARG APPIMAGE_PART_COUNT=18
 ENV APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}
 
 # Optional single-file mirror URL (empty = GitHub, unless parts prefix is set).
@@ -38,7 +40,7 @@ ARG APPIMAGE_URL=
 ENV APPIMAGE_URL=${APPIMAGE_URL}
 
 # SHA256 of the complete AppImage (required when using APPIMAGE_PARTS_PREFIX).
-ARG APPIMAGE_SHA256=
+ARG APPIMAGE_SHA256=e2006138400b2fa85fa2e160e872d00767eb32964e85075830f7e198a3a876e1
 ENV APPIMAGE_SHA256=${APPIMAGE_SHA256}
 
 # Deploy Token for mirror downloads (build-time only, not in runtime ENV).

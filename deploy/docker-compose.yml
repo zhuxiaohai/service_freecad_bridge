@@ -21,10 +21,10 @@ services:
         DOCKER_REGISTRY: ${DOCKER_REGISTRY:-hub.designorder.cn/}
         APT_MIRROR: ${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}
         FREECAD_TAG: ${FREECAD_TAG:-1.1.1}
-        APPIMAGE_PARTS_PREFIX: ${APPIMAGE_PARTS_PREFIX:-}
-        APPIMAGE_PART_COUNT: ${APPIMAGE_PART_COUNT:-}
+        APPIMAGE_PARTS_PREFIX: ${APPIMAGE_PARTS_PREFIX:-https://gitee.com/xiaohaizhu/freecad-appimage-mirror/releases/download/freecad-appimage-1.1.1/part_}
+        APPIMAGE_PART_COUNT: ${APPIMAGE_PART_COUNT:-18}
         APPIMAGE_URL: ${APPIMAGE_URL:-}
-        APPIMAGE_SHA256: ${APPIMAGE_SHA256:-}
+        APPIMAGE_SHA256: ${APPIMAGE_SHA256:-e2006138400b2fa85fa2e160e872d00767eb32964e85075830f7e198a3a876e1}
         APPIMAGE_DOWNLOAD_TOKEN: ${APPIMAGE_DOWNLOAD_TOKEN:-}
         APPIMAGE_DOWNLOAD_TOKEN_TYPE: ${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}
     volumes:

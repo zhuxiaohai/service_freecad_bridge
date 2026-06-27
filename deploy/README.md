@@ -56,69 +56,59 @@ just docker::publish-show
 | `DOCKER_REGISTRY` | `hub.designorder.cn/` | Prefix for base images (`ubuntu:24.04`) |
 | `APT_MIRROR` | `http://mirrors.aliyun.com/ubuntu/` | Ubuntu apt mirror (HTTP; Jenkins blocks archive.ubuntu.com) |
 | `FREECAD_TAG` | `1.1.1` | FreeCAD AppImage version at build time |
-| `APPIMAGE_PARTS_PREFIX` | *(empty)* | Gitee Release URL prefix for split parts |
-| `APPIMAGE_PART_COUNT` | *(empty)* | Number of split parts (from mirror script output) |
-| `APPIMAGE_SHA256` | *(empty)* | SHA256 of the complete AppImage (required with parts) |
-| `APPIMAGE_DOWNLOAD_TOKEN` | *(empty)* | Gitee token (only if repo is private) |
-| `APPIMAGE_DOWNLOAD_TOKEN_TYPE` | `auto` | `auto`, `gitee`, `private`, or `deploy` |
-| `GITEE_OWNER` | *(empty)* | Gitee username (for `mirror-appimage` upload) |
-| `GITEE_ACCESS_TOKEN` | *(empty)* | Gitee private token (upload only, do not commit) |
+| `APPIMAGE_*` | *(see `deploy/appimage-mirror.env`)* | Optional overrides; Jenkins uses Dockerfile defaults |
 
-## FreeCAD AppImage Gitee mirror (split parts)
+## Jenkins zero-config (corporate CI)
+
+Unlike the MCP server repo, this image **downloads FreeCAD (~783MB)** at build
+time. MCP needs no extra config because it only builds Python on Alpine.
+
+**Jenkins needs no `deploy/.env` and no build-arg secrets** for the default setup:
+
+| Setting | Default (in Dockerfile) |
+| ------- | ----------------------- |
+| Base images | `hub.designorder.cn/` |
+| apt mirror | Aliyun HTTP |
+| AppImage | Public Gitee split mirror ([xiaohaizhu/freecad-appimage-mirror](https://gitee.com/xiaohaizhu/freecad-appimage-mirror)) |
+
+Jenkins runs `docker build -f Dockerfile .` on the repo — same as MCP.
+
+**Why not GitLab zero-config?** GitLab Generic Packages require authentication
+(401 without token). Gitee Release is public, so no download token.
+
+**Optional faster mirror:** add to local `deploy/.env` only (GitLab + token).
+
+## FreeCAD AppImage mirror (split parts)
 
 Corporate Jenkins cannot download the ~782MB AppImage from GitHub quickly.
-[Gitee Release attachments](https://gitee.com/help/articles/4328) allow up to
-100MB per file, so the AppImage is split into 45MB parts, uploaded to your
-**personal Gitee repo**, and reassembled during `docker build`.
+The default mirror is **public Gitee** (18 × 45MB parts). Values live in
+`deploy/appimage-mirror.env` and Dockerfile `ARG` defaults.
 
-### Step 1 — Create Gitee repo
-
-1. Create repo: `freecad-appimage-mirror` (with README / initial commit)
-2. **Recommended:** set visibility to **公开 (public)** — then Jenkins needs no download token
-3. Create private token: [私人令牌](https://gitee.com/profile/personal_access_tokens) with **`projects`** scope (for upload)
-
-### Step 2 — Configure deploy/.env
+### Upload new FreeCAD version (one-time)
 
 ```bash
 GITEE_OWNER=your-gitee-username
-GITEE_ACCESS_TOKEN=<token-for-upload-only>
-```
-
-### Step 3 — Split and upload (one-time per FreeCAD version)
-
-```bash
+GITEE_ACCESS_TOKEN=<token>
 just docker::mirror-appimage
+# Then update deploy/appimage-mirror.env + Dockerfile ARG defaults with new SHA/count
 ```
 
-Prints values to paste into `deploy/.env`:
+### GitLab mirror (optional, local override)
 
 ```bash
-APPIMAGE_PARTS_PREFIX=https://gitee.com/yourname/freecad-appimage-mirror/releases/download/freecad-appimage-1.1.1/part_
-APPIMAGE_PART_COUNT=18
-APPIMAGE_SHA256=e2006138400b2fa85fa2e160e872d00767eb32964e85075830f7e198a3a876e1
-# Private repo only:
-APPIMAGE_DOWNLOAD_TOKEN=<gitee-token>
-APPIMAGE_DOWNLOAD_TOKEN_TYPE=gitee
+MIRROR_TARGET=gitlab just docker::mirror-appimage
+# Add APPIMAGE_* overrides to deploy/.env (requires download token)
 ```
-
-### Step 4 — Rebuild
-
-```bash
-just docker::compose-build
-```
-
-### GitLab mirror (optional)
-
-Company GitLab is still supported: `MIRROR_TARGET=gitlab just docker::mirror-appimage`
 
 ## Corporate CI (Jenkins)
 
-1. Push to GitLab `dev` branch
-2. Trigger Jenkins build manually
-3. Jenkins builds root `Dockerfile` and pushes `hub.designorder.cn/freecad-bridge:dev`
+1. Push to company GitLab `develop` branch
+2. Trigger Jenkins build manually (no `deploy/.env`, no extra build-args)
+3. Jenkins builds root `Dockerfile` → pushes `hub.designorder.cn/freecad-bridge:dev`
 4. K8s pulls the new image
 
-Local `just docker::compose-build` uses the same Dockerfile and build args.
+Local `just docker::compose-build` uses the same Dockerfile defaults via
+`deploy/appimage-mirror.env` + optional `deploy/.env` overrides.
 
 ## Standalone smoke test
 

@@ -7,6 +7,8 @@
 
 deploy_compose := project_root + "/deploy/docker-compose.yml"
 deploy_env := project_root + "/deploy/.env"
+appimage_mirror_env := project_root + "/deploy/appimage-mirror.env"
+compose_env_files := "--env-file " + appimage_mirror_env + " --env-file " + deploy_env
 project_root := justfile_directory()
 dockerfile := project_root + "/Dockerfile"
 gui_test_image := "freecad-gui-test"
@@ -24,8 +26,11 @@ publish-show:
     echo "Bridge image settings (deploy/.env):"
     grep -E '^(FREECAD_BRIDGE_IMAGE|DOCKER_REGISTRY|APT_MIRROR|FREECAD_TAG|APPIMAGE_PARTS_PREFIX|APPIMAGE_PART_COUNT|APPIMAGE_SHA256)=' "$ENV_FILE" || true
     echo ""
+    echo "AppImage mirror defaults (deploy/appimage-mirror.env — used when .env omits APPIMAGE_*):"
+    grep -E '^(APPIMAGE_PARTS_PREFIX|APPIMAGE_PART_COUNT|APPIMAGE_SHA256)=' "{{appimage_mirror_env}}" || true
+    echo ""
     echo "Resolved by docker compose config:"
-    docker compose -f {{deploy_compose}} config --images
+    docker compose -f {{deploy_compose}} {{compose_env_files}} config --images
     echo ""
     echo "Workflow:"
     echo "  just docker::compose-build    # build bridge image"
@@ -36,18 +41,18 @@ publish-show:
 
 # Build bridge image (tag from deploy/.env)
 compose-build:
-    docker compose -f {{deploy_compose}} build freecad
+    docker compose -f {{deploy_compose}} {{compose_env_files}} build freecad
 
 # Alias for compose-build
 compose-build-bridge: compose-build
 
 # Start bridge container without rebuilding
 compose-up:
-    docker compose -f {{deploy_compose}} up -d --no-build
+    docker compose -f {{deploy_compose}} {{compose_env_files}} up -d --no-build
 
 # Stop bridge container
 compose-down:
-    docker compose -f {{deploy_compose}} down
+    docker compose -f {{deploy_compose}} {{compose_env_files}} down
 
 # Direct docker build using tag from deploy/.env
 build:
@@ -59,16 +64,17 @@ build:
     fi
     set -a
     # shellcheck disable=SC1090
+    source "{{appimage_mirror_env}}"
     source "$ENV_FILE"
     set +a
     docker build \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
-        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
-        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}" \
         --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
-        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE:?Set FREECAD_BRIDGE_IMAGE in deploy/.env}" \
@@ -82,6 +88,7 @@ build-tag tag:
     ENV_FILE="{{deploy_env}}"
     set -a
     # shellcheck disable=SC1090
+    source "{{appimage_mirror_env}}"
     source "$ENV_FILE"
     set +a
     BASE="${FREECAD_BRIDGE_IMAGE%%:*}"
@@ -89,10 +96,10 @@ build-tag tag:
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
-        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
-        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}" \
         --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
-        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${BASE}:{{tag}}" \
@@ -103,7 +110,7 @@ build-tag tag:
 publish-push:
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --format json \
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --format json \
         | python3 -c "import json,sys; print(json.load(sys.stdin)['services']['freecad']['image'])")
     echo "Pushing ${IMAGE} ..."
     docker push "${IMAGE}"
@@ -133,7 +140,7 @@ publish version:
     BRIDGE_BASE=$(grep '^FREECAD_BRIDGE_IMAGE=' "$ENV_FILE" | cut -d= -f2 | sed 's/:[^:]*$//')
     export FREECAD_BRIDGE_IMAGE="${BRIDGE_BASE}:${VERSION}"
     echo "Release build: ${FREECAD_BRIDGE_IMAGE}"
-    docker compose -f {{deploy_compose}} build freecad
+    docker compose -f {{deploy_compose}} {{compose_env_files}} build freecad
     docker push "${FREECAD_BRIDGE_IMAGE}"
     echo "✓ Pushed ${FREECAD_BRIDGE_IMAGE}"
 
@@ -156,6 +163,7 @@ build-multi: setup-buildx
     ENV_FILE="{{deploy_env}}"
     set -a
     # shellcheck disable=SC1090
+    source "{{appimage_mirror_env}}"
     source "$ENV_FILE"
     set +a
     docker buildx build \
@@ -163,10 +171,10 @@ build-multi: setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
-        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
-        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}" \
         --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
-        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
@@ -180,6 +188,7 @@ build-push tag="dev": setup-buildx
     ENV_FILE="{{deploy_env}}"
     set -a
     # shellcheck disable=SC1090
+    source "{{appimage_mirror_env}}"
     source "$ENV_FILE"
     set +a
     BASE="${FREECAD_BRIDGE_IMAGE%%:*}"
@@ -188,10 +197,10 @@ build-push tag="dev": setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
-        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
-        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}" \
         --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
-        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${BASE}:{{tag}}" \
@@ -206,6 +215,7 @@ build-load: setup-buildx
     ENV_FILE="{{deploy_env}}"
     set -a
     # shellcheck disable=SC1090
+    source "{{appimage_mirror_env}}"
     source "$ENV_FILE"
     set +a
     ARCH=$(uname -m)
@@ -218,10 +228,10 @@ build-load: setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
-        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
-        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}" \
         --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
-        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
         --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
@@ -233,7 +243,7 @@ build-load: setup-buildx
 inspect:
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --images | head -1)
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --images | head -1)
     docker images "$IMAGE"
     echo ""
     docker history "$IMAGE"
@@ -242,7 +252,7 @@ inspect:
 clean:
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --images 2>/dev/null | head -1 || true)
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --images 2>/dev/null | head -1 || true)
     if [ -n "$IMAGE" ]; then
         docker rmi "$IMAGE" 2>/dev/null || true
     fi
@@ -255,7 +265,7 @@ clean-all: clean
 scan:
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --images | head -1)
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --images | head -1)
     IGNOREFILE="{{project_root}}/.trivyignore"
     IGNORE_FLAG=""
     if [ -f "$IGNOREFILE" ]; then
@@ -267,7 +277,7 @@ scan:
 scan-strict:
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --images | head -1)
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --images | head -1)
     IGNOREFILE="{{project_root}}/.trivyignore"
     IGNORE_FLAG=""
     if [ -f "$IGNOREFILE" ]; then
@@ -278,7 +288,7 @@ scan-strict:
 scan-sarif output="trivy-results.sarif":
     #!/usr/bin/env bash
     set -euo pipefail
-    IMAGE=$(docker compose -f {{deploy_compose}} config --images | head -1)
+    IMAGE=$(docker compose -f {{deploy_compose}} {{compose_env_files}} config --images | head -1)
     IGNOREFILE="{{project_root}}/.trivyignore"
     IGNORE_FLAG=""
     if [ -f "$IGNOREFILE" ]; then
