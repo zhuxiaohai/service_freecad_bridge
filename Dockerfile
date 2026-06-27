@@ -26,6 +26,25 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG FREECAD_TAG=1.1.1
 ENV FREECAD_TAG=${FREECAD_TAG}
 
+# GitLab mirror: split AppImage parts (see deploy/scripts/mirror-freecad-appimage.sh).
+ARG APPIMAGE_PARTS_PREFIX=
+ENV APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX}
+
+ARG APPIMAGE_PART_COUNT=
+ENV APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT}
+
+# Optional single-file mirror URL (empty = GitHub, unless parts prefix is set).
+ARG APPIMAGE_URL=
+ENV APPIMAGE_URL=${APPIMAGE_URL}
+
+# SHA256 of the complete AppImage (required when using APPIMAGE_PARTS_PREFIX).
+ARG APPIMAGE_SHA256=
+ENV APPIMAGE_SHA256=${APPIMAGE_SHA256}
+
+# Deploy Token for mirror downloads (build-time only, not in runtime ENV).
+ARG APPIMAGE_DOWNLOAD_TOKEN=
+ARG APPIMAGE_DOWNLOAD_TOKEN_TYPE=auto
+
 # AppImage installation directory (setup-freecad.sh respects this variable)
 ENV APPIMAGE_DIR=/opt/freecad-appimage
 
@@ -69,7 +88,9 @@ RUN chmod +x /usr/local/bin/setup-freecad.sh
 # CI environment variables are NOT propagated into docker build, so APPIMAGE_SHA256
 # is not required here (the script's CI check only triggers when CI=true is set).
 # hadolint ignore=DL3001,DL3059
-RUN /usr/local/bin/setup-freecad.sh
+RUN APPIMAGE_DOWNLOAD_TOKEN="${APPIMAGE_DOWNLOAD_TOKEN}" \
+    APPIMAGE_DOWNLOAD_TOKEN_TYPE="${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
+    /usr/local/bin/setup-freecad.sh
 
 # Copy the Robust MCP Bridge addon.
 # blocking_bridge.py adds its own directory to sys.path, so no package install needed.

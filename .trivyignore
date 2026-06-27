@@ -27,6 +27,13 @@
 # See assembly_agent deploy/docker-compose.yml volume mount.
 AVD-DS-0002
 
+# AVD-DS-0031 - Secret passed via Docker build ARG
+# APPIMAGE_DOWNLOAD_TOKEN is required at build time to download split AppImage
+# parts from private Gitee/GitLab mirrors. It is not written to runtime ENV
+# (only passed into the single RUN setup-freecad.sh step). Jenkins should use
+# a credential-backed build-arg, not commit the token to git.
+AVD-DS-0031
+
 # =============================================================================
 # IGNORED VULNERABILITIES
 # =============================================================================

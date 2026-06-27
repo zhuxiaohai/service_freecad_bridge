@@ -5,8 +5,21 @@ set -euo pipefail
 # Validate required variables have safe defaults
 FREECAD_TAG="${FREECAD_TAG:-1.1.1}"
 APPIMAGE_DIR="${APPIMAGE_DIR:-$HOME/freecad-appimage}"
-# Optional SHA256 checksum for verification (if provided, download will be verified)
+# Split mirror: URL prefix for parts (part_00, part_01, ...).
+# Gitee example: https://gitee.com/yourname/freecad-appimage-mirror/releases/download/freecad-appimage-1.1.1/part_
+APPIMAGE_PARTS_PREFIX="${APPIMAGE_PARTS_PREFIX:-}"
+# Number of split parts when APPIMAGE_PARTS_PREFIX is set (from mirror-appimage output).
+APPIMAGE_PART_COUNT="${APPIMAGE_PART_COUNT:-}"
+# Optional single-file mirror URL (alternative to split parts).
+APPIMAGE_URL="${APPIMAGE_URL:-}"
+# SHA256 of the complete AppImage (required for split mirror downloads).
 APPIMAGE_SHA256="${APPIMAGE_SHA256:-}"
+# Max seconds per download request (split mirror downloads one part at a time).
+APPIMAGE_DOWNLOAD_MAX_TIME="${APPIMAGE_DOWNLOAD_MAX_TIME:-600}"
+# Token for private mirror downloads (Gitee private token or GitLab access token).
+APPIMAGE_DOWNLOAD_TOKEN="${APPIMAGE_DOWNLOAD_TOKEN:-}"
+# Auth mode: auto (detect from URL), gitee, private (GitLab), deploy (GitLab Deploy Token).
+APPIMAGE_DOWNLOAD_TOKEN_TYPE="${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}"
 
 # Validate APPIMAGE_DIR is set and non-empty after defaults
 if [[ -z "$APPIMAGE_DIR" ]]; then
@@ -55,6 +68,101 @@ if is_ci_environment && [[ -z "$APPIMAGE_SHA256" ]]; then
     echo "Set the APPIMAGE_SHA256 environment variable to the expected checksum"
     exit 1
 fi
+
+# Split mirror downloads must verify the reassembled file
+if [[ -n "$APPIMAGE_PARTS_PREFIX" ]] && [[ -z "$APPIMAGE_SHA256" ]]; then
+    echo "ERROR: APPIMAGE_SHA256 is required when APPIMAGE_PARTS_PREFIX is set"
+    exit 1
+fi
+
+if [[ -n "$APPIMAGE_PARTS_PREFIX" ]] && [[ -z "$APPIMAGE_PART_COUNT" ]]; then
+    echo "ERROR: APPIMAGE_PART_COUNT is required when APPIMAGE_PARTS_PREFIX is set"
+    exit 1
+fi
+
+resolve_download_token_type() {
+    if [[ "$APPIMAGE_DOWNLOAD_TOKEN_TYPE" != "auto" ]]; then
+        return
+    fi
+    if [[ "$APPIMAGE_PARTS_PREFIX" == *"gitee.com"* ]]; then
+        APPIMAGE_DOWNLOAD_TOKEN_TYPE="gitee"
+    elif [[ "$APPIMAGE_PARTS_PREFIX" == *"git.designorder.cn"* ]] || [[ "$APPIMAGE_PARTS_PREFIX" == *"gitlab"* ]]; then
+        APPIMAGE_DOWNLOAD_TOKEN_TYPE="private"
+    else
+        APPIMAGE_DOWNLOAD_TOKEN_TYPE="private"
+    fi
+}
+
+resolve_download_token_type
+
+verify_appimage_sha256() {
+    local file_path="$1"
+    echo "Verifying SHA256 checksum..."
+    local computed_sha256
+    computed_sha256=$(sha256sum "$file_path" | awk '{print $1}')
+    if [[ "$computed_sha256" != "$APPIMAGE_SHA256" ]]; then
+        echo "ERROR: SHA256 checksum mismatch!"
+        echo "  Expected: $APPIMAGE_SHA256"
+        echo "  Computed: $computed_sha256"
+        echo "Removing corrupted/tampered download..."
+        rm -f "$file_path"
+        exit 1
+    fi
+    echo "SHA256 checksum verified successfully"
+}
+
+download_with_curl() {
+    local url="$1"
+    local output_path="$2"
+    local curl_auth=()
+    if [[ -n "$APPIMAGE_DOWNLOAD_TOKEN" ]]; then
+        case "$APPIMAGE_DOWNLOAD_TOKEN_TYPE" in
+            gitee)
+                curl_auth=(--header "Authorization: token ${APPIMAGE_DOWNLOAD_TOKEN}")
+                ;;
+            deploy)
+                curl_auth=(--header "DEPLOY-TOKEN: ${APPIMAGE_DOWNLOAD_TOKEN}")
+                ;;
+            private|*)
+                curl_auth=(--header "PRIVATE-TOKEN: ${APPIMAGE_DOWNLOAD_TOKEN}")
+                ;;
+        esac
+    fi
+    curl -L --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+        --max-time "$APPIMAGE_DOWNLOAD_MAX_TIME" \
+        "${curl_auth[@]}" \
+        -f -o "$output_path" \
+        "$url"
+}
+
+download_appimage_single() {
+    local url="$1"
+    echo "Downloading FreeCAD AppImage (timeout ${APPIMAGE_DOWNLOAD_MAX_TIME}s per request)..."
+    download_with_curl "$url" "$APPIMAGE_PATH"
+}
+
+download_appimage_parts() {
+    local parts_dir
+    parts_dir=$(mktemp -d)
+    local part_index part_num part_url part_path
+
+    echo "Downloading AppImage in ${APPIMAGE_PART_COUNT} parts from mirror..."
+    for ((part_index=0; part_index<APPIMAGE_PART_COUNT; part_index++)); do
+        part_num=$(printf '%02d' "$part_index")
+        part_url="${APPIMAGE_PARTS_PREFIX}${part_num}"
+        part_path="${parts_dir}/part_${part_num}"
+        echo "  Part $((part_index + 1))/${APPIMAGE_PART_COUNT}: ${part_url}"
+        download_with_curl "$part_url" "$part_path"
+    done
+
+    echo "Assembling AppImage from ${APPIMAGE_PART_COUNT} parts..."
+    : > "$APPIMAGE_PATH"
+    for ((part_index=0; part_index<APPIMAGE_PART_COUNT; part_index++)); do
+        part_num=$(printf '%02d' "$part_index")
+        cat "${parts_dir}/part_${part_num}" >> "$APPIMAGE_PATH"
+    done
+    rm -rf "$parts_dir"
+}
 
 echo "=== Setting up FreeCAD $FREECAD_TAG ==="
 
@@ -132,20 +240,40 @@ if [[ "$FREECAD_TAG" == 1.0.* ]]; then
 else
     APPIMAGE_NAME="FreeCAD_${FREECAD_TAG}-Linux-${ARCH_SUFFIX}-py311.AppImage"
 fi
-APPIMAGE_URL="https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_TAG}/${APPIMAGE_NAME}"
+if [[ -z "$APPIMAGE_URL" ]]; then
+    APPIMAGE_URL="https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_TAG}/${APPIMAGE_NAME}"
+fi
+if [[ -n "$APPIMAGE_PARTS_PREFIX" ]]; then
+    if [[ "$APPIMAGE_PARTS_PREFIX" == *"gitee.com"* ]]; then
+        APPIMAGE_SOURCE="gitee-parts"
+    else
+        APPIMAGE_SOURCE="mirror-parts"
+    fi
+elif [[ "$APPIMAGE_URL" != "https://github.com/FreeCAD/FreeCAD/releases/download/"* ]]; then
+    APPIMAGE_SOURCE="mirror"
+else
+    APPIMAGE_SOURCE="github"
+fi
 # APPIMAGE_PATH is defined earlier for use in cleanup_on_error trap
 
 echo "FreeCAD release: $FREECAD_TAG"
-echo "AppImage URL: $APPIMAGE_URL"
+echo "AppImage source: $APPIMAGE_SOURCE"
 echo "AppImage name: $APPIMAGE_NAME"
+if [[ "$APPIMAGE_SOURCE" == "gitee-parts" ]] || [[ "$APPIMAGE_SOURCE" == "mirror-parts" ]]; then
+    echo "AppImage parts prefix: $APPIMAGE_PARTS_PREFIX"
+    echo "AppImage part count: $APPIMAGE_PART_COUNT"
+else
+    echo "AppImage URL: $APPIMAGE_URL"
+fi
 
 # Download
 mkdir -p "$APPIMAGE_DIR"
 if [ ! -f "$APPIMAGE_PATH" ]; then
-    echo "Downloading FreeCAD AppImage..."
-    curl -L --retry 3 --retry-delay 5 --retry-all-errors --connect-timeout 30 --max-time 600 \
-        -f -o "$APPIMAGE_PATH" \
-        "$APPIMAGE_URL"
+    if [[ "$APPIMAGE_SOURCE" == "gitee-parts" ]] || [[ "$APPIMAGE_SOURCE" == "mirror-parts" ]]; then
+        download_appimage_parts
+    else
+        download_appimage_single "$APPIMAGE_URL"
+    fi
 
     # Verify download succeeded and file exists
     if [[ ! -f "$APPIMAGE_PATH" ]]; then
@@ -155,17 +283,7 @@ if [ ! -f "$APPIMAGE_PATH" ]; then
 
     # Verify SHA256 checksum if provided
     if [[ -n "$APPIMAGE_SHA256" ]]; then
-        echo "Verifying SHA256 checksum..."
-        COMPUTED_SHA256=$(sha256sum "$APPIMAGE_PATH" | awk '{print $1}')
-        if [[ "$COMPUTED_SHA256" != "$APPIMAGE_SHA256" ]]; then
-            echo "ERROR: SHA256 checksum mismatch!"
-            echo "  Expected: $APPIMAGE_SHA256"
-            echo "  Computed: $COMPUTED_SHA256"
-            echo "Removing corrupted/tampered download..."
-            rm -f "$APPIMAGE_PATH"
-            exit 1
-        fi
-        echo "SHA256 checksum verified successfully"
+        verify_appimage_sha256 "$APPIMAGE_PATH"
     else
         echo "Note: No APPIMAGE_SHA256 provided, skipping checksum verification"
     fi

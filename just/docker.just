@@ -22,7 +22,7 @@ publish-show:
         exit 1
     fi
     echo "Bridge image settings (deploy/.env):"
-    grep -E '^(FREECAD_BRIDGE_IMAGE|DOCKER_REGISTRY|APT_MIRROR|FREECAD_TAG)=' "$ENV_FILE" || true
+    grep -E '^(FREECAD_BRIDGE_IMAGE|DOCKER_REGISTRY|APT_MIRROR|FREECAD_TAG|APPIMAGE_PARTS_PREFIX|APPIMAGE_PART_COUNT|APPIMAGE_SHA256)=' "$ENV_FILE" || true
     echo ""
     echo "Resolved by docker compose config:"
     docker compose -f {{deploy_compose}} config --images
@@ -65,6 +65,12 @@ build:
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE:?Set FREECAD_BRIDGE_IMAGE in deploy/.env}" \
         -f {{dockerfile}} \
         {{project_root}}
@@ -83,6 +89,12 @@ build-tag tag:
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${BASE}:{{tag}}" \
         -f {{dockerfile}} \
         {{project_root}}
@@ -151,6 +163,12 @@ build-multi: setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
         -f {{dockerfile}} \
         {{project_root}}
@@ -170,6 +188,12 @@ build-push tag="dev": setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${BASE}:{{tag}}" \
         --push \
         -f {{dockerfile}} \
@@ -194,6 +218,12 @@ build-load: setup-buildx
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
         --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
+        --build-arg "APPIMAGE_PARTS_PREFIX=${APPIMAGE_PARTS_PREFIX:-}" \
+        --build-arg "APPIMAGE_PART_COUNT=${APPIMAGE_PART_COUNT:-}" \
+        --build-arg "APPIMAGE_URL=${APPIMAGE_URL:-}" \
+        --build-arg "APPIMAGE_SHA256=${APPIMAGE_SHA256:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN=${APPIMAGE_DOWNLOAD_TOKEN:-}" \
+        --build-arg "APPIMAGE_DOWNLOAD_TOKEN_TYPE=${APPIMAGE_DOWNLOAD_TOKEN_TYPE:-auto}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
         --load \
         -f {{dockerfile}} \
@@ -324,3 +354,29 @@ gui-test-cmd *args:
         {{args}}
 
 gui-test: build-gui-test gui-test-run
+
+# Create Gitee mirror repo (one-time): freecad-appimage-mirror
+create-gitee-repo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ENV_FILE="{{deploy_env}}"
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+    bash "{{project_root}}/deploy/scripts/create-gitee-mirror-repo.sh"
+
+# Split AppImage into <100MB parts and upload to Gitee Release (one-time setup).
+mirror-appimage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ENV_FILE="{{deploy_env}}"
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+    export GITEE_OWNER="${GITEE_OWNER:-}"
+    export GITEE_REPO="${GITEE_REPO:-freecad-appimage-mirror}"
+    export GITEE_ACCESS_TOKEN="${GITEE_ACCESS_TOKEN:-}"
+    export MIRROR_TARGET="${MIRROR_TARGET:-gitee}"
+    bash "{{project_root}}/deploy/scripts/mirror-freecad-appimage.sh"

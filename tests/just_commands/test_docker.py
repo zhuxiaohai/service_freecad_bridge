@@ -86,6 +86,8 @@ class TestDockerSyntax:
         "docker::gui-test-run",
         "docker::gui-test-cmd",
         "docker::gui-test",
+        "docker::mirror-appimage",
+        "docker::create-gitee-repo",
     ]
 
     @pytest.mark.just_syntax
