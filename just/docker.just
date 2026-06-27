@@ -63,7 +63,7 @@ build:
     set +a
     docker build \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
-        --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}" \
+        --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
         -t "${FREECAD_BRIDGE_IMAGE:?Set FREECAD_BRIDGE_IMAGE in deploy/.env}" \
         -f {{dockerfile}} \
@@ -81,7 +81,7 @@ build-tag tag:
     BASE="${FREECAD_BRIDGE_IMAGE%%:*}"
     docker build \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
-        --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}" \
+        --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
         -t "${BASE}:{{tag}}" \
         -f {{dockerfile}} \
@@ -149,7 +149,7 @@ build-multi: setup-buildx
     docker buildx build \
         --platform linux/amd64,linux/arm64 \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
-        --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}" \
+        --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
         -f {{dockerfile}} \
@@ -168,7 +168,7 @@ build-push tag="dev": setup-buildx
     docker buildx build \
         --platform linux/amd64,linux/arm64 \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
-        --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}" \
+        --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
         -t "${BASE}:{{tag}}" \
         --push \
@@ -192,7 +192,7 @@ build-load: setup-buildx
     esac
     docker buildx build --platform "$PLATFORM" \
         --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY:-hub.designorder.cn/}" \
-        --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/ubuntu/}" \
+        --build-arg "APT_MIRROR=${APT_MIRROR:-http://mirrors.aliyun.com/ubuntu/}" \
         --build-arg "FREECAD_TAG=${FREECAD_TAG:-1.1.1}" \
         -t "${FREECAD_BRIDGE_IMAGE}" \
         --load \

@@ -11,8 +11,10 @@
 # Prefix for base images (empty = Docker Hub). Corporate CI uses hub.designorder.cn/.
 ARG DOCKER_REGISTRY=hub.designorder.cn/
 # Ubuntu apt mirror for corporate networks that block archive.ubuntu.com.
+# Use HTTP (not HTTPS): ca-certificates is not installed until apt-get runs.
+# HTTPS mirrors fail TLS verification on a fresh ubuntu:24.04 layer.
 # Override at build time: --build-arg APT_MIRROR= (empty = upstream defaults)
-ARG APT_MIRROR=https://mirrors.aliyun.com/ubuntu/
+ARG APT_MIRROR=http://mirrors.aliyun.com/ubuntu/
 FROM ${DOCKER_REGISTRY}ubuntu:24.04
 
 ARG APT_MIRROR
@@ -35,6 +37,8 @@ ENV APPIMAGE_DIR=/opt/freecad-appimage
 #   fonts-dejavu-core      - Basic fonts required by FreeCAD document rendering
 # hadolint ignore=DL3008
 RUN if [ -n "${APT_MIRROR}" ]; then \
+      APT_MIRROR="${APT_MIRROR#https://}"; \
+      APT_MIRROR="http://${APT_MIRROR#http://}"; \
       sed -i \
         -e "s|http://archive.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
         -e "s|http://security.ubuntu.com/ubuntu/|${APT_MIRROR}|g" \
